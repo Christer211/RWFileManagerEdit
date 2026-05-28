@@ -20,7 +20,7 @@ Press **✕** (top-left) to dismiss.
 
 ## Screenshot
 
-<img width="1125" height="2436" alt="IMG_1112" src="https://github.com/user-attachments/assets/ae0cebfb-13fe-40b4-8e4f-fc9ba327ff0f" />
+<img width="562.5" height="1218" alt="IMG_1112" src="https://github.com/user-attachments/assets/ae0cebfb-13fe-40b4-8e4f-fc9ba327ff0f" />
 
 ## Building
 

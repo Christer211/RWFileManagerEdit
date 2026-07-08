@@ -390,7 +390,7 @@ trailingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)ip {
     return [UISwipeActionsConfiguration configurationWithActions:@[del]];
 }
 
-// ─── SWIPE RIGHT → RENAME (FIXED - FINAL) ──────────────────────────────
+// ─── SWIPE RIGHT → RENAME (FIXED - ULTIMATE) ────────────────────────────
 - (UISwipeActionsConfiguration *)tableView:(UITableView *)tv
 leadingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)ip {
     NSString *oldName = self.items[ip.row];
@@ -402,22 +402,47 @@ leadingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)ip {
         handler:^(UIContextualAction *action, UIView *sv, void(^done)(BOOL)) {
             done(YES);
 
-            // Wait 0.5 seconds for the swipe row to completely collapse
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)),
+            // Use a longer delay and a safer presenter
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.8 * NSEC_PER_SEC)),
                            dispatch_get_main_queue(), ^{
                 __strong typeof(weakSelf) strongSelf = weakSelf;
                 if (!strongSelf) return;
 
-                // Use the top-most view controller as the presenter (always safe)
-                UIViewController *presenter = RWGetTopViewController();
-                if (!presenter) {
-                    // Fallback to the navigation controller if topVC is nil
+                // Get the most reliable presenter: the window's root view controller
+                UIViewController *presenter = nil;
+                UIWindow *keyWindow = nil;
+                for (UIWindowScene *scene in [UIApplication sharedApplication].connectedScenes) {
+                    if ([scene isKindOfClass:[UIWindowScene class]] &&
+                        scene.activationState == UISceneActivationStateForegroundActive) {
+                        for (UIWindow *window in scene.windows) {
+                            if (window.isKeyWindow) {
+                                keyWindow = window;
+                                break;
+                            }
+                        }
+                        if (keyWindow) break;
+                    }
+                }
+                if (keyWindow) {
+                    presenter = keyWindow.rootViewController;
+                    while (presenter.presentedViewController) {
+                        presenter = presenter.presentedViewController;
+                    }
+                }
+                // Fallback to the navigation controller
+                if (!presenter || !presenter.view.window) {
                     presenter = strongSelf.navigationController ?: strongSelf;
                     while (presenter.presentedViewController) {
                         presenter = presenter.presentedViewController;
                     }
                 }
-                if (!presenter) return;
+                // Final fallback
+                if (!presenter || !presenter.view.window) {
+                    presenter = RWGetTopViewController();
+                }
+                if (!presenter || !presenter.view.window) {
+                    return; // Give up
+                }
 
                 UIAlertController *alert = [UIAlertController
                     alertControllerWithTitle:@"Rename"

@@ -250,6 +250,125 @@ static NSString *RWFileSizeString(NSString *path, BOOL isDir) {
 
 @end
 
+// ─── Custom Rename Dialog ─────────────────────────────────────────────────
+
+@interface RWCustomeRenameView : UIView
+@property (nonatomic, copy) void (^renameBlock)(NSString *newName);
+@property (nonatomic, copy) void (^cancelBlock)(void);
+@property (nonatomic, strong) UITextField *textField;
+- (instancetype)initWithOldName:(NSString *)oldName;
+@end
+
+@implementation RWCustomeRenameView {
+    NSString *_oldName;
+}
+
+- (instancetype)initWithOldName:(NSString *)oldName {
+    self = [super init];
+    if (self) {
+        _oldName = oldName;
+        self.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.4];
+        self.translatesAutoresizingMaskIntoConstraints = NO;
+
+        // Container with blur
+        UIBlurEffect *blur = [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemMaterial];
+        UIVisualEffectView *container = [[UIVisualEffectView alloc] initWithEffect:blur];
+        container.layer.cornerRadius = 20;
+        container.layer.cornerCurve = kCACornerCurveContinuous;
+        container.clipsToBounds = YES;
+        container.layer.borderWidth = 0.5;
+        container.layer.borderColor = [UIColor separatorColor].CGColor;
+        container.translatesAutoresizingMaskIntoConstraints = NO;
+        [self addSubview:container];
+
+        // Title label
+        UILabel *titleLabel = [[UILabel alloc] init];
+        titleLabel.text = @"Rename";
+        titleLabel.font = [UIFont systemFontOfSize:20 weight:UIFontWeightBold];
+        titleLabel.textAlignment = NSTextAlignmentCenter;
+        titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+        [container.contentView addSubview:titleLabel];
+
+        // Text field
+        _textField = [[UITextField alloc] init];
+        _textField.text = _oldName;
+        _textField.borderStyle = UITextBorderStyleRoundedRect;
+        _textField.autocorrectionType = UITextAutocorrectionTypeNo;
+        _textField.clearButtonMode = UITextFieldViewModeWhileEditing;
+        _textField.returnKeyType = UIReturnKeyDone;
+        _textField.translatesAutoresizingMaskIntoConstraints = NO;
+        [container.contentView addSubview:_textField];
+
+        // Buttons stack
+        UIStackView *buttonStack = [[UIStackView alloc] init];
+        buttonStack.axis = UILayoutConstraintAxisHorizontal;
+        buttonStack.spacing = 12;
+        buttonStack.distribution = UIStackViewDistributionFillEqually;
+        buttonStack.translatesAutoresizingMaskIntoConstraints = NO;
+        [container.contentView addSubview:buttonStack];
+
+        UIButton *cancelButton = [UIButton buttonWithType:UIButtonTypeSystem];
+        [cancelButton setTitle:@"Cancel" forState:UIControlStateNormal];
+        cancelButton.titleLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightMedium];
+        cancelButton.backgroundColor = [UIColor systemGray6Color];
+        cancelButton.layer.cornerRadius = 10;
+        cancelButton.clipsToBounds = YES;
+        [cancelButton addTarget:self action:@selector(cancelTapped) forControlEvents:UIControlEventTouchUpInside];
+
+        UIButton *renameButton = [UIButton buttonWithType:UIButtonTypeSystem];
+        [renameButton setTitle:@"Rename" forState:UIControlStateNormal];
+        renameButton.titleLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightSemibold];
+        renameButton.backgroundColor = [UIColor systemBlueColor];
+        [renameButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+        renameButton.layer.cornerRadius = 10;
+        renameButton.clipsToBounds = YES;
+        [renameButton addTarget:self action:@selector(renameTapped) forControlEvents:UIControlEventTouchUpInside];
+
+        [buttonStack addArrangedSubview:cancelButton];
+        [buttonStack addArrangedSubview:renameButton];
+
+        // Layout constraints
+        [NSLayoutConstraint activateConstraints:@[
+            [container.centerXAnchor constraintEqualToAnchor:self.centerXAnchor],
+            [container.centerYAnchor constraintEqualToAnchor:self.centerYAnchor],
+            [container.widthAnchor constraintEqualToConstant:320],
+            [container.heightAnchor constraintGreaterThanOrEqualToConstant:200],
+
+            [titleLabel.topAnchor constraintEqualToAnchor:container.contentView.topAnchor constant:20],
+            [titleLabel.leadingAnchor constraintEqualToAnchor:container.contentView.leadingAnchor constant:20],
+            [titleLabel.trailingAnchor constraintEqualToAnchor:container.contentView.trailingAnchor constant:-20],
+
+            [_textField.topAnchor constraintEqualToAnchor:titleLabel.bottomAnchor constant:20],
+            [_textField.leadingAnchor constraintEqualToAnchor:container.contentView.leadingAnchor constant:20],
+            [_textField.trailingAnchor constraintEqualToAnchor:container.contentView.trailingAnchor constant:-20],
+            [_textField.heightAnchor constraintEqualToConstant:44],
+
+            [buttonStack.topAnchor constraintEqualToAnchor:_textField.bottomAnchor constant:20],
+            [buttonStack.leadingAnchor constraintEqualToAnchor:container.contentView.leadingAnchor constant:20],
+            [buttonStack.trailingAnchor constraintEqualToAnchor:container.contentView.trailingAnchor constant:-20],
+            [buttonStack.bottomAnchor constraintEqualToAnchor:container.contentView.bottomAnchor constant:-20],
+            [buttonStack.heightAnchor constraintEqualToConstant:44],
+        ]];
+
+        // Show keyboard after appear
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            [self.textField becomeFirstResponder];
+        });
+    }
+    return self;
+}
+
+- (void)cancelTapped {
+    if (self.cancelBlock) self.cancelBlock();
+}
+
+- (void)renameTapped {
+    NSString *newName = self.textField.text;
+    if (self.renameBlock) self.renameBlock(newName);
+}
+
+@end
+
 // ─── File Browser ─────────────────────────────────────────────────────────────
 
 @interface RWFileBrowserViewController : UITableViewController <UIDocumentPickerDelegate>
@@ -390,7 +509,7 @@ trailingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)ip {
     return [UISwipeActionsConfiguration configurationWithActions:@[del]];
 }
 
-// ─── SWIPE RIGHT → RENAME (FIXED - ULTIMATE) ────────────────────────────
+// ─── SWIPE RIGHT → RENAME (CUSTOM DIALOG) ──────────────────────────────
 - (UISwipeActionsConfiguration *)tableView:(UITableView *)tv
 leadingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)ip {
     NSString *oldName = self.items[ip.row];
@@ -402,80 +521,48 @@ leadingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)ip {
         handler:^(UIContextualAction *action, UIView *sv, void(^done)(BOOL)) {
             done(YES);
 
-            // Use a longer delay and a safer presenter
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.8 * NSEC_PER_SEC)),
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)),
                            dispatch_get_main_queue(), ^{
                 __strong typeof(weakSelf) strongSelf = weakSelf;
                 if (!strongSelf) return;
 
-                // Get the most reliable presenter: the window's root view controller
-                UIViewController *presenter = nil;
-                UIWindow *keyWindow = nil;
-                for (UIWindowScene *scene in [UIApplication sharedApplication].connectedScenes) {
-                    if ([scene isKindOfClass:[UIWindowScene class]] &&
-                        scene.activationState == UISceneActivationStateForegroundActive) {
-                        for (UIWindow *window in scene.windows) {
-                            if (window.isKeyWindow) {
-                                keyWindow = window;
-                                break;
-                            }
-                        }
-                        if (keyWindow) break;
+                // Create a new window for the custom rename view
+                UIWindow *renameWindow = [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
+                renameWindow.windowLevel = UIWindowLevelAlert + 1;
+                renameWindow.backgroundColor = [UIColor clearColor];
+                UIViewController *rootVC = [UIViewController new];
+                rootVC.view.backgroundColor = [UIColor clearColor];
+                renameWindow.rootViewController = rootVC;
+                [renameWindow makeKeyAndVisible];
+
+                // Create the custom view
+                RWCustomeRenameView *renameView = [[RWCustomeRenameView alloc] initWithOldName:oldName];
+                renameView.translatesAutoresizingMaskIntoConstraints = NO;
+                [rootVC.view addSubview:renameView];
+
+                [NSLayoutConstraint activateConstraints:@[
+                    [renameView.topAnchor constraintEqualToAnchor:rootVC.view.topAnchor],
+                    [renameView.leadingAnchor constraintEqualToAnchor:rootVC.view.leadingAnchor],
+                    [renameView.trailingAnchor constraintEqualToAnchor:rootVC.view.trailingAnchor],
+                    [renameView.bottomAnchor constraintEqualToAnchor:rootVC.view.bottomAnchor],
+                ]];
+
+                __weak typeof(renameWindow) weakWindow = renameWindow;
+                renameView.renameBlock = ^(NSString *newName) {
+                    if (newName.length && ![newName isEqualToString:oldName] &&
+                        ![newName containsString:@"/"]) {
+                        NSString *newPath = [strongSelf.directory stringByAppendingPathComponent:newName];
+                        [[NSFileManager defaultManager] moveItemAtPath:oldPath toPath:newPath error:nil];
+                        [strongSelf reload];
                     }
-                }
-                if (keyWindow) {
-                    presenter = keyWindow.rootViewController;
-                    while (presenter.presentedViewController) {
-                        presenter = presenter.presentedViewController;
-                    }
-                }
-                // Fallback to the navigation controller
-                if (!presenter || !presenter.view.window) {
-                    presenter = strongSelf.navigationController ?: strongSelf;
-                    while (presenter.presentedViewController) {
-                        presenter = presenter.presentedViewController;
-                    }
-                }
-                // Final fallback
-                if (!presenter || !presenter.view.window) {
-                    presenter = RWGetTopViewController();
-                }
-                if (!presenter || !presenter.view.window) {
-                    return; // Give up
-                }
+                    weakWindow.hidden = YES;
+                    weakWindow = nil;
+                };
 
-                UIAlertController *alert = [UIAlertController
-                    alertControllerWithTitle:@"Rename"
-                    message:[NSString stringWithFormat:@"Rename \"%@\"", oldName]
-                    preferredStyle:UIAlertControllerStyleAlert];
-
-                [alert addTextFieldWithConfigurationHandler:^(UITextField *tf) {
-                    tf.text = oldName;
-                    tf.autocorrectionType = UITextAutocorrectionTypeNo;
-                    tf.clearButtonMode = UITextFieldViewModeWhileEditing;
-                    tf.returnKeyType = UIReturnKeyDone;
-                }];
-
-                __weak typeof(alert) weakAlert = alert;
-                UIAlertAction *cancel = [UIAlertAction actionWithTitle:@"Cancel"
-                    style:UIAlertActionStyleCancel handler:nil];
-                UIAlertAction *renameAction = [UIAlertAction actionWithTitle:@"Rename"
-                    style:UIAlertActionStyleDefault
-                    handler:^(UIAlertAction *action) {
-                        NSString *newName = weakAlert.textFields.firstObject.text;
-                        if (newName.length && ![newName isEqualToString:oldName] &&
-                            ![newName containsString:@"/"]) {
-                            NSString *newPath = [strongSelf.directory stringByAppendingPathComponent:newName];
-                            [[NSFileManager defaultManager] moveItemAtPath:oldPath toPath:newPath error:nil];
-                            [strongSelf reload];
-                        }
-                    }];
-
-                [alert addAction:cancel];
-                [alert addAction:renameAction];
-                alert.preferredAction = renameAction;
-
-                [presenter presentViewController:alert animated:YES completion:nil];
+                renameView.cancelBlock = ^{
+                    weakWindow.hidden = YES;
+                    weakWindow = nil;
+                };
             });
         }];
 

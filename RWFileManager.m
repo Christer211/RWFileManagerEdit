@@ -250,16 +250,16 @@ static NSString *RWFileSizeString(NSString *path, BOOL isDir) {
 
 @end
 
-// ─── Custom Rename Dialog ─────────────────────────────────────────────────
+// ─── Custom Rename View ──────────────────────────────────────────────────
 
-@interface RWCustomeRenameView : UIView
+@interface RWRenameView : UIView
 @property (nonatomic, copy) void (^renameBlock)(NSString *newName);
 @property (nonatomic, copy) void (^cancelBlock)(void);
 @property (nonatomic, strong) UITextField *textField;
 - (instancetype)initWithOldName:(NSString *)oldName;
 @end
 
-@implementation RWCustomeRenameView {
+@implementation RWRenameView {
     NSString *_oldName;
 }
 
@@ -267,7 +267,6 @@ static NSString *RWFileSizeString(NSString *path, BOOL isDir) {
     self = [super init];
     if (self) {
         _oldName = oldName;
-        self.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.4];
         self.translatesAutoresizingMaskIntoConstraints = NO;
 
         UIBlurEffect *blur = [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemMaterial];
@@ -359,6 +358,52 @@ static NSString *RWFileSizeString(NSString *path, BOOL isDir) {
 - (void)renameTapped {
     NSString *newName = self.textField.text;
     if (self.renameBlock) self.renameBlock(newName);
+}
+
+@end
+
+// ─── Custom Rename View Controller ──────────────────────────────────────
+
+@interface RWRenameViewController : UIViewController
+@property (nonatomic, copy) void (^renameBlock)(NSString *newName);
+@property (nonatomic, copy) void (^cancelBlock)(void);
+@property (nonatomic, strong) NSString *oldName;
+@end
+
+@implementation RWRenameViewController {
+    RWRenameView *_renameView;
+}
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    self.view.backgroundColor = [UIColor clearColor];
+    self.modalPresentationStyle = UIModalPresentationOverCurrentContext;
+    self.modalTransitionStyle = UIModalTransitionStyleCrossDissolve;
+
+    _renameView = [[RWRenameView alloc] initWithOldName:self.oldName];
+    _renameView.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.view addSubview:_renameView];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [_renameView.topAnchor constraintEqualToAnchor:self.view.topAnchor],
+        [_renameView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [_renameView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [_renameView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
+    ]];
+
+    __weak typeof(self) weakSelf = self;
+    _renameView.renameBlock = ^(NSString *newName) {
+        if (weakSelf.renameBlock) weakSelf.renameBlock(newName);
+        [weakSelf dismissViewControllerAnimated:YES completion:nil];
+    };
+    _renameView.cancelBlock = ^{
+        if (weakSelf.cancelBlock) weakSelf.cancelBlock();
+        [weakSelf dismissViewControllerAnimated:YES completion:nil];
+    };
+}
+
+- (void)dealloc {
+    // Cleanup
 }
 
 @end
@@ -503,7 +548,7 @@ trailingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)ip {
     return [UISwipeActionsConfiguration configurationWithActions:@[del]];
 }
 
-// ─── SWIPE RIGHT → RENAME (CUSTOM DIALOG) ──────────────────────────────
+// ─── SWIPE RIGHT → RENAME (MODAL CUSTOM VC) ─────────────────────────────
 - (UISwipeActionsConfiguration *)tableView:(UITableView *)tv
 leadingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)ip {
     NSString *oldName = self.items[ip.row];
@@ -520,43 +565,26 @@ leadingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)ip {
                 __strong typeof(weakSelf) strongSelf = weakSelf;
                 if (!strongSelf) return;
 
-                UIWindow *renameWindow = [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
-                renameWindow.windowLevel = UIWindowLevelAlert + 1;
-                renameWindow.backgroundColor = [UIColor clearColor];
-                UIViewController *rootVC = [UIViewController new];
-                rootVC.view.backgroundColor = [UIColor clearColor];
-                renameWindow.rootViewController = rootVC;
-                [renameWindow makeKeyAndVisible];
+                UIViewController *presenter = RWGetTopViewController();
+                if (!presenter) return;
 
-                RWCustomeRenameView *renameView = [[RWCustomeRenameView alloc] initWithOldName:oldName];
-                renameView.translatesAutoresizingMaskIntoConstraints = NO;
-                [rootVC.view addSubview:renameView];
+                RWRenameViewController *renameVC = [RWRenameViewController new];
+                renameVC.oldName = oldName;
 
-                [NSLayoutConstraint activateConstraints:@[
-                    [renameView.topAnchor constraintEqualToAnchor:rootVC.view.topAnchor],
-                    [renameView.leadingAnchor constraintEqualToAnchor:rootVC.view.leadingAnchor],
-                    [renameView.trailingAnchor constraintEqualToAnchor:rootVC.view.trailingAnchor],
-                    [renameView.bottomAnchor constraintEqualToAnchor:rootVC.view.bottomAnchor],
-                ]];
-
-                // ✅ FIX: use __block __weak so we can assign nil inside blocks
-                __block __weak typeof(renameWindow) weakWindow = renameWindow;
-
-                renameView.renameBlock = ^(NSString *newName) {
+                renameVC.renameBlock = ^(NSString *newName) {
                     if (newName.length && ![newName isEqualToString:oldName] &&
                         ![newName containsString:@"/"]) {
                         NSString *newPath = [strongSelf.directory stringByAppendingPathComponent:newName];
                         [[NSFileManager defaultManager] moveItemAtPath:oldPath toPath:newPath error:nil];
                         [strongSelf reload];
                     }
-                    weakWindow.hidden = YES;
-                    weakWindow = nil;
                 };
 
-                renameView.cancelBlock = ^{
-                    weakWindow.hidden = YES;
-                    weakWindow = nil;
+                renameVC.cancelBlock = ^{
+                    // Nothing needed
                 };
+
+                [presenter presentViewController:renameVC animated:YES completion:nil];
             });
         }];
 

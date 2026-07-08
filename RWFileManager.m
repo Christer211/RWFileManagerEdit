@@ -390,7 +390,7 @@ trailingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)ip {
     return [UISwipeActionsConfiguration configurationWithActions:@[del]];
 }
 
-// ─── SWIPE RIGHT → RENAME (FIXED) ──────────────────────────────────────
+// ─── SWIPE RIGHT → RENAME (FIXED - FINAL) ──────────────────────────────
 - (UISwipeActionsConfiguration *)tableView:(UITableView *)tv
 leadingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)ip {
     NSString *oldName = self.items[ip.row];
@@ -402,21 +402,22 @@ leadingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)ip {
         handler:^(UIContextualAction *action, UIView *sv, void(^done)(BOOL)) {
             done(YES);
 
-            // Wait for the swipe row to finish collapsing before presenting the alert
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)),
+            // Wait 0.5 seconds for the swipe row to completely collapse
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)),
                            dispatch_get_main_queue(), ^{
                 __strong typeof(weakSelf) strongSelf = weakSelf;
                 if (!strongSelf) return;
 
-                // Find a suitable presenter
-                UIViewController *presenter = strongSelf.navigationController ?: strongSelf;
-                while (presenter.presentedViewController) {
-                    presenter = presenter.presentedViewController;
+                // Use the top-most view controller as the presenter (always safe)
+                UIViewController *presenter = RWGetTopViewController();
+                if (!presenter) {
+                    // Fallback to the navigation controller if topVC is nil
+                    presenter = strongSelf.navigationController ?: strongSelf;
+                    while (presenter.presentedViewController) {
+                        presenter = presenter.presentedViewController;
+                    }
                 }
-                if (!presenter.view.window) {
-                    presenter = RWGetTopViewController();
-                    if (!presenter) return;
-                }
+                if (!presenter) return;
 
                 UIAlertController *alert = [UIAlertController
                     alertControllerWithTitle:@"Rename"

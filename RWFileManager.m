@@ -2,6 +2,27 @@
 #import <Foundation/Foundation.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
+// Helper to get the top-most presented view controller
+static UIViewController *RWGetTopViewController(void) {
+    UIWindowScene *scene = nil;
+    for (UIWindowScene *s in [UIApplication sharedApplication].connectedScenes) {
+        if ([s isKindOfClass:[UIWindowScene class]] &&
+            s.activationState == UISceneActivationStateForegroundActive) {
+            scene = s;
+            break;
+        }
+    }
+    UIWindow *key = scene.windows.firstObject;
+    for (UIWindow *w in scene.windows) {
+        if (w.isKeyWindow) { key = w; break; }
+    }
+    UIViewController *root = key.rootViewController;
+    while (root.presentedViewController) {
+        root = root.presentedViewController;
+    }
+    return root;
+}
+
 static NSString *RWFileSizeString(NSString *path, BOOL isDir) {
     if (isDir) return @"Folder";
     NSDictionary *a = [[NSFileManager defaultManager] attributesOfItemAtPath:path error:nil];
@@ -250,7 +271,7 @@ static NSString *RWFileSizeString(NSString *path, BOOL isDir) {
     self.tableView.contentInset = UIEdgeInsetsMake(4, 0, 20, 0);
     [self.tableView registerClass:[RWGlassCell class] forCellReuseIdentifier:@"glass"];
     self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc]
-        initWithBarButtonSystemItem:UIBarButtonSystemItemAdd target:self action:@selector(importFile)];
+        initWithBarButtonSystemItem:UIBarButtonSystemItemAdd target:self action:@selector(addTapped)];
     [self reload];
 }
 
@@ -355,7 +376,7 @@ static NSString *RWFileSizeString(NSString *path, BOOL isDir) {
     [self.navigationController pushViewController:ed animated:YES];
 }
 
-// Swipe left → delete
+// ─── SWIPE LEFT → DELETE ──────────────────────────────────────────────────
 - (UISwipeActionsConfiguration *)tableView:(UITableView *)tv
 trailingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)ip {
     NSString *full = [self.directory stringByAppendingPathComponent:self.items[ip.row]];
@@ -369,34 +390,111 @@ trailingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)ip {
     return [UISwipeActionsConfiguration configurationWithActions:@[del]];
 }
 
-// Swipe right → rename (moved from long press)
+// ─── SWIPE RIGHT → RENAME (FIXED) ──────────────────────────────────────
 - (UISwipeActionsConfiguration *)tableView:(UITableView *)tv
 leadingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)ip {
     NSString *oldName = self.items[ip.row];
     NSString *oldPath = [self.directory stringByAppendingPathComponent:oldName];
-    UIContextualAction *ren = [UIContextualAction
+    __weak typeof(self) weakSelf = self;
+
+    UIContextualAction *renameAction = [UIContextualAction
         contextualActionWithStyle:UIContextualActionStyleNormal title:nil
-        handler:^(UIContextualAction *a, UIView *sv, void(^done)(BOOL)) {
-            UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Rename"
-                message:nil preferredStyle:UIAlertControllerStyleAlert];
-            [alert addTextFieldWithConfigurationHandler:^(UITextField *tf) { tf.text = oldName; }];
-            [alert addAction:[UIAlertAction actionWithTitle:@"Cancel"
-                style:UIAlertActionStyleCancel handler:^(UIAlertAction *_) { done(NO); }]];
-            [alert addAction:[UIAlertAction actionWithTitle:@"Rename"
-                style:UIAlertActionStyleDefault handler:^(UIAlertAction *_) {
-                    NSString *newName = alert.textFields.firstObject.text;
-                    if (newName.length && ![newName isEqualToString:oldName]) {
-                        NSString *newPath = [self.directory stringByAppendingPathComponent:newName];
-                        [[NSFileManager defaultManager] moveItemAtPath:oldPath toPath:newPath error:nil];
-                        [self reload];
-                    }
-                    done(YES);
-                }]];
-            [self presentViewController:alert animated:YES completion:nil];
+        handler:^(UIContextualAction *action, UIView *sv, void(^done)(BOOL)) {
+            done(YES);
+
+            // ✅ FIX: Wait 0.3s for the swipe row to fully collapse
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)),
+                           dispatch_get_main_queue(), ^{
+                __strong typeof(weakSelf) strongSelf = weakSelf;
+                if (!strongSelf) return;
+
+                // Find a suitable presenter
+                UIViewController *presenter = strongSelf.navigationController ?: strongSelf;
+                while (presenter.presentedViewController) {
+                    presenter = presenter.presentedViewController;
+                }
+                if (!presenter.view.window) {
+                    presenter = RWGetTopViewController();
+                    if (!presenter) return;
+                }
+
+                UIAlertController *alert = [UIAlertController
+                    alertControllerWithTitle:@"Rename"
+                    message:[NSString stringWithFormat:@"Rename \"%@\"", oldName]
+                    preferredStyle:UIAlertControllerStyleAlert];
+
+                [alert addTextFieldWithConfigurationHandler:^(UITextField *tf) {
+                    tf.text = oldName;
+                    tf.autocorrectionType = UITextAutocorrectionTypeNo;
+                    tf.clearButtonMode = UITextFieldViewModeWhileEditing;
+                    tf.returnKeyType = UIReturnKeyDone;
+                }];
+
+                __weak typeof(alert) weakAlert = alert;
+                UIAlertAction *cancel = [UIAlertAction actionWithTitle:@"Cancel"
+                    style:UIAlertActionStyleCancel handler:nil];
+                // ✅ FIX: renamed to renameAction (was 'rename')
+                UIAlertAction *renameAction = [UIAlertAction actionWithTitle:@"Rename"
+                    style:UIAlertActionStyleDefault
+                    handler:^(UIAlertAction *action) {
+                        NSString *newName = weakAlert.textFields.firstObject.text;
+                        if (newName.length && ![newName isEqualToString:oldName] &&
+                            ![newName containsString:@"/"]) {
+                            NSString *newPath = [strongSelf.directory stringByAppendingPathComponent:newName];
+                            [[NSFileManager defaultManager] moveItemAtPath:oldPath toPath:newPath error:nil];
+                            [strongSelf reload];
+                        }
+                    }];
+
+                [alert addAction:cancel];
+                [alert addAction:renameAction];
+                alert.preferredAction = renameAction;
+
+                [presenter presentViewController:alert animated:YES completion:nil];
+            });
         }];
-    ren.image = [UIImage systemImageNamed:@"pencil"];
-    ren.backgroundColor = [UIColor systemBlueColor];
-    return [UISwipeActionsConfiguration configurationWithActions:@[ren]];
+
+    renameAction.image = [UIImage systemImageNamed:@"pencil"];
+    renameAction.backgroundColor = [UIColor systemBlueColor];
+    return [UISwipeActionsConfiguration configurationWithActions:@[renameAction]];
+}
+
+- (void)addTapped {
+    UIAlertController *sheet = [UIAlertController alertControllerWithTitle:nil message:nil
+        preferredStyle:UIAlertControllerStyleActionSheet];
+
+    __weak typeof(self) weakSelf = self;
+
+    [sheet addAction:[UIAlertAction actionWithTitle:@"New Folder" style:UIAlertActionStyleDefault
+        handler:^(UIAlertAction *_) {
+        [weakSelf createNewFolder];
+    }]];
+
+    [sheet addAction:[UIAlertAction actionWithTitle:@"Import File" style:UIAlertActionStyleDefault
+        handler:^(UIAlertAction *_) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)),
+            dispatch_get_main_queue(), ^{
+            [weakSelf importFile];
+        });
+    }]];
+    [sheet addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+
+    sheet.popoverPresentationController.barButtonItem = self.navigationItem.rightBarButtonItem;
+    [self presentViewController:sheet animated:YES completion:nil];
+}
+
+- (void)createNewFolder {
+    NSFileManager *fm = [NSFileManager defaultManager];
+    NSString *base = @"New Folder";
+    NSString *name = base;
+    NSInteger n = 2;
+    while ([fm fileExistsAtPath:[self.directory stringByAppendingPathComponent:name]]) {
+        name = [NSString stringWithFormat:@"%@ %ld", base, (long)n];
+        n++;
+    }
+    NSString *path = [self.directory stringByAppendingPathComponent:name];
+    [fm createDirectoryAtPath:path withIntermediateDirectories:NO attributes:nil error:nil];
+    [self reload];
 }
 
 - (void)importFile {
@@ -471,15 +569,8 @@ didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
 
 static void presentFileManager(void) {
     dispatch_async(dispatch_get_main_queue(), ^{
-        UIWindowScene *scene = nil;
-        for (UIWindowScene *s in [UIApplication sharedApplication].connectedScenes) {
-            if ([s isKindOfClass:[UIWindowScene class]] &&
-                s.activationState == UISceneActivationStateForegroundActive) { scene = s; break; }
-        }
-        UIWindow *key = scene.windows.firstObject;
-        for (UIWindow *w in scene.windows) { if (w.isKeyWindow) { key = w; break; } }
-        UIViewController *root = key.rootViewController;
-        while (root.presentedViewController) root = root.presentedViewController;
+        UIViewController *topVC = RWGetTopViewController();
+        if (!topVC) return;
 
         RWOverlayViewController *overlay = [RWOverlayViewController new];
         if (@available(iOS 15.0, *)) {
@@ -491,7 +582,7 @@ static void presentFileManager(void) {
         } else {
             overlay.modalPresentationStyle = UIModalPresentationFullScreen;
         }
-        [root presentViewController:overlay animated:YES completion:nil];
+        [topVC presentViewController:overlay animated:YES completion:nil];
     });
 }
 

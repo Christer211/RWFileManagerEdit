@@ -402,7 +402,7 @@ leadingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)ip {
         handler:^(UIContextualAction *action, UIView *sv, void(^done)(BOOL)) {
             done(YES);
 
-            // ✅ FIX: Wait 0.3s for the swipe row to fully collapse
+            // Wait for the swipe row to finish collapsing before presenting the alert
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)),
                            dispatch_get_main_queue(), ^{
                 __strong typeof(weakSelf) strongSelf = weakSelf;
@@ -433,7 +433,6 @@ leadingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)ip {
                 __weak typeof(alert) weakAlert = alert;
                 UIAlertAction *cancel = [UIAlertAction actionWithTitle:@"Cancel"
                     style:UIAlertActionStyleCancel handler:nil];
-                // ✅ FIX: renamed to renameAction (was 'rename')
                 UIAlertAction *renameAction = [UIAlertAction actionWithTitle:@"Rename"
                     style:UIAlertActionStyleDefault
                     handler:^(UIAlertAction *action) {

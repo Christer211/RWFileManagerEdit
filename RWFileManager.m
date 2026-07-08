@@ -2,7 +2,8 @@
 #import <Foundation/Foundation.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
-// Helper to get the top-most presented view controller
+// ─── Helpers ─────────────────────────────────────────────────────────────
+
 static UIViewController *RWGetTopViewController(void) {
     UIWindowScene *scene = nil;
     for (UIWindowScene *s in [UIApplication sharedApplication].connectedScenes) {
@@ -32,6 +33,109 @@ static NSString *RWFileSizeString(NSString *path, BOOL isDir) {
     if (b < 1024*1024*1024) return [NSString stringWithFormat:@"%.1f MB", b/1024.0/1024.0];
     return [NSString stringWithFormat:@"%.1f GB", b/1024.0/1024.0/1024.0];
 }
+
+// ─── Custom Alert View Controller (replaces UIAlertController) ────────
+
+@interface RWCustomAlertViewController : UIViewController
+@property (nonatomic, copy) void (^buttonTapped)(NSInteger buttonIndex);
+- (instancetype)initWithTitle:(NSString *)title message:(NSString *)message buttons:(NSArray<NSString *> *)buttonTitles;
+@end
+
+@implementation RWCustomAlertViewController {
+    NSString *_titleText;
+    NSString *_messageText;
+    NSArray *_buttonTitles;
+}
+
+- (instancetype)initWithTitle:(NSString *)title message:(NSString *)message buttons:(NSArray<NSString *> *)buttonTitles {
+    self = [super init];
+    if (self) {
+        _titleText = title;
+        _messageText = message;
+        _buttonTitles = buttonTitles;
+        self.modalPresentationStyle = UIModalPresentationOverCurrentContext;
+        self.modalTransitionStyle = UIModalTransitionStyleCrossDissolve;
+        self.view.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.4];
+    }
+    return self;
+}
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+
+    UIBlurEffect *blur = [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemMaterial];
+    UIVisualEffectView *container = [[UIVisualEffectView alloc] initWithEffect:blur];
+    container.layer.cornerRadius = 20;
+    container.layer.cornerCurve = kCACornerCurveContinuous;
+    container.clipsToBounds = YES;
+    container.layer.borderWidth = 0.5;
+    container.layer.borderColor = [UIColor separatorColor].CGColor;
+    container.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.view addSubview:container];
+
+    UIStackView *stack = [[UIStackView alloc] init];
+    stack.axis = UILayoutConstraintAxisVertical;
+    stack.spacing = 16;
+    stack.alignment = UIStackViewAlignmentCenter;
+    stack.translatesAutoresizingMaskIntoConstraints = NO;
+    [container.contentView addSubview:stack];
+
+    if (_titleText.length) {
+        UILabel *titleLabel = [[UILabel alloc] init];
+        titleLabel.text = _titleText;
+        titleLabel.font = [UIFont systemFontOfSize:18 weight:UIFontWeightBold];
+        titleLabel.textAlignment = NSTextAlignmentCenter;
+        [stack addArrangedSubview:titleLabel];
+    }
+
+    if (_messageText.length) {
+        UILabel *msgLabel = [[UILabel alloc] init];
+        msgLabel.text = _messageText;
+        msgLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightRegular];
+        msgLabel.textAlignment = NSTextAlignmentCenter;
+        msgLabel.numberOfLines = 0;
+        [stack addArrangedSubview:msgLabel];
+    }
+
+    UIStackView *buttonStack = [[UIStackView alloc] init];
+    buttonStack.axis = UILayoutConstraintAxisHorizontal;
+    buttonStack.spacing = 12;
+    buttonStack.distribution = UIStackViewDistributionFillEqually;
+    buttonStack.translatesAutoresizingMaskIntoConstraints = NO;
+    [stack addArrangedSubview:buttonStack];
+
+    for (NSInteger i = 0; i < _buttonTitles.count; i++) {
+        UIButton *btn = [UIButton buttonWithType:UIButtonTypeSystem];
+        [btn setTitle:_buttonTitles[i] forState:UIControlStateNormal];
+        btn.titleLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightSemibold];
+        btn.backgroundColor = (i == 0) ? [UIColor systemBlueColor] : [UIColor systemGray6Color];
+        [btn setTitleColor:(i == 0) ? [UIColor whiteColor] : [UIColor labelColor] forState:UIControlStateNormal];
+        btn.layer.cornerRadius = 10;
+        btn.clipsToBounds = YES;
+        btn.tag = i;
+        [btn addTarget:self action:@selector(buttonAction:) forControlEvents:UIControlEventTouchUpInside];
+        [buttonStack addArrangedSubview:btn];
+    }
+
+    [NSLayoutConstraint activateConstraints:@[
+        [container.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
+        [container.centerYAnchor constraintEqualToAnchor:self.view.centerYAnchor],
+        [container.widthAnchor constraintEqualToConstant:280],
+        [stack.topAnchor constraintEqualToAnchor:container.contentView.topAnchor constant:24],
+        [stack.leadingAnchor constraintEqualToAnchor:container.contentView.leadingAnchor constant:20],
+        [stack.trailingAnchor constraintEqualToAnchor:container.contentView.trailingAnchor constant:-20],
+        [stack.bottomAnchor constraintEqualToAnchor:container.contentView.bottomAnchor constant:-24],
+        [buttonStack.heightAnchor constraintEqualToConstant:44],
+        [buttonStack.widthAnchor constraintEqualToAnchor:stack.widthAnchor],
+    ]];
+}
+
+- (void)buttonAction:(UIButton *)sender {
+    if (self.buttonTapped) self.buttonTapped(sender.tag);
+    [self dismissViewControllerAnimated:YES completion:nil];
+}
+
+@end
 
 // ─── Glass Cell ─────────────────────────────────────────────────────────────
 
@@ -242,10 +346,10 @@ static NSString *RWFileSizeString(NSString *path, BOOL isDir) {
     BOOL ok = [_textView.text writeToFile:self.filePath atomically:YES
                                  encoding:NSUTF8StringEncoding error:&err];
     NSString *msg = ok ? @"Saved." : [NSString stringWithFormat:@"Error: %@", err.localizedDescription];
-    UIAlertController *a = [UIAlertController alertControllerWithTitle:nil message:msg
-        preferredStyle:UIAlertControllerStyleAlert];
-    [a addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
-    [self presentViewController:a animated:YES completion:nil];
+    // Use custom alert
+    RWCustomAlertViewController *alert = [[RWCustomAlertViewController alloc] initWithTitle:nil message:msg buttons:@[@"OK"]];
+    alert.buttonTapped = ^(NSInteger idx) {};
+    [self presentViewController:alert animated:YES completion:nil];
 }
 
 @end
@@ -400,10 +504,6 @@ static NSString *RWFileSizeString(NSString *path, BOOL isDir) {
         if (weakSelf.cancelBlock) weakSelf.cancelBlock();
         [weakSelf dismissViewControllerAnimated:YES completion:nil];
     };
-}
-
-- (void)dealloc {
-    // Cleanup
 }
 
 @end
@@ -581,7 +681,7 @@ leadingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)ip {
                 };
 
                 renameVC.cancelBlock = ^{
-                    // Nothing needed
+                    // Nothing
                 };
 
                 [presenter presentViewController:renameVC animated:YES completion:nil];
@@ -593,28 +693,20 @@ leadingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)ip {
     return [UISwipeActionsConfiguration configurationWithActions:@[renameAction]];
 }
 
+// ─── ADD BUTTON (Custom Action Sheet) ───────────────────────────────────
 - (void)addTapped {
-    UIAlertController *sheet = [UIAlertController alertControllerWithTitle:nil message:nil
-        preferredStyle:UIAlertControllerStyleActionSheet];
-
+    RWCustomAlertViewController *alert = [[RWCustomAlertViewController alloc]
+        initWithTitle:@"Add" message:nil buttons:@[@"New Folder", @"Import File", @"Cancel"]];
     __weak typeof(self) weakSelf = self;
-
-    [sheet addAction:[UIAlertAction actionWithTitle:@"New Folder" style:UIAlertActionStyleDefault
-        handler:^(UIAlertAction *_) {
-        [weakSelf createNewFolder];
-    }]];
-
-    [sheet addAction:[UIAlertAction actionWithTitle:@"Import File" style:UIAlertActionStyleDefault
-        handler:^(UIAlertAction *_) {
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)),
-            dispatch_get_main_queue(), ^{
+    alert.buttonTapped = ^(NSInteger idx) {
+        if (idx == 0) {
+            [weakSelf createNewFolder];
+        } else if (idx == 1) {
             [weakSelf importFile];
-        });
-    }]];
-    [sheet addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
-
-    sheet.popoverPresentationController.barButtonItem = self.navigationItem.rightBarButtonItem;
-    [self presentViewController:sheet animated:YES completion:nil];
+        }
+        // idx == 2 -> Cancel, do nothing
+    };
+    [self presentViewController:alert animated:YES completion:nil];
 }
 
 - (void)createNewFolder {

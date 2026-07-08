@@ -270,7 +270,6 @@ static NSString *RWFileSizeString(NSString *path, BOOL isDir) {
         self.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.4];
         self.translatesAutoresizingMaskIntoConstraints = NO;
 
-        // Container with blur
         UIBlurEffect *blur = [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemMaterial];
         UIVisualEffectView *container = [[UIVisualEffectView alloc] initWithEffect:blur];
         container.layer.cornerRadius = 20;
@@ -281,7 +280,6 @@ static NSString *RWFileSizeString(NSString *path, BOOL isDir) {
         container.translatesAutoresizingMaskIntoConstraints = NO;
         [self addSubview:container];
 
-        // Title label
         UILabel *titleLabel = [[UILabel alloc] init];
         titleLabel.text = @"Rename";
         titleLabel.font = [UIFont systemFontOfSize:20 weight:UIFontWeightBold];
@@ -289,7 +287,6 @@ static NSString *RWFileSizeString(NSString *path, BOOL isDir) {
         titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
         [container.contentView addSubview:titleLabel];
 
-        // Text field
         _textField = [[UITextField alloc] init];
         _textField.text = _oldName;
         _textField.borderStyle = UITextBorderStyleRoundedRect;
@@ -299,7 +296,6 @@ static NSString *RWFileSizeString(NSString *path, BOOL isDir) {
         _textField.translatesAutoresizingMaskIntoConstraints = NO;
         [container.contentView addSubview:_textField];
 
-        // Buttons stack
         UIStackView *buttonStack = [[UIStackView alloc] init];
         buttonStack.axis = UILayoutConstraintAxisHorizontal;
         buttonStack.spacing = 12;
@@ -327,7 +323,6 @@ static NSString *RWFileSizeString(NSString *path, BOOL isDir) {
         [buttonStack addArrangedSubview:cancelButton];
         [buttonStack addArrangedSubview:renameButton];
 
-        // Layout constraints
         [NSLayoutConstraint activateConstraints:@[
             [container.centerXAnchor constraintEqualToAnchor:self.centerXAnchor],
             [container.centerYAnchor constraintEqualToAnchor:self.centerYAnchor],
@@ -350,7 +345,6 @@ static NSString *RWFileSizeString(NSString *path, BOOL isDir) {
             [buttonStack.heightAnchor constraintEqualToConstant:44],
         ]];
 
-        // Show keyboard after appear
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             [self.textField becomeFirstResponder];
         });
@@ -526,7 +520,6 @@ leadingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)ip {
                 __strong typeof(weakSelf) strongSelf = weakSelf;
                 if (!strongSelf) return;
 
-                // Create a new window for the custom rename view
                 UIWindow *renameWindow = [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
                 renameWindow.windowLevel = UIWindowLevelAlert + 1;
                 renameWindow.backgroundColor = [UIColor clearColor];
@@ -535,7 +528,6 @@ leadingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)ip {
                 renameWindow.rootViewController = rootVC;
                 [renameWindow makeKeyAndVisible];
 
-                // Create the custom view
                 RWCustomeRenameView *renameView = [[RWCustomeRenameView alloc] initWithOldName:oldName];
                 renameView.translatesAutoresizingMaskIntoConstraints = NO;
                 [rootVC.view addSubview:renameView];
@@ -547,7 +539,9 @@ leadingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)ip {
                     [renameView.bottomAnchor constraintEqualToAnchor:rootVC.view.bottomAnchor],
                 ]];
 
-                __weak typeof(renameWindow) weakWindow = renameWindow;
+                // ✅ FIX: use __block __weak so we can assign nil inside blocks
+                __block __weak typeof(renameWindow) weakWindow = renameWindow;
+
                 renameView.renameBlock = ^(NSString *newName) {
                     if (newName.length && ![newName isEqualToString:oldName] &&
                         ![newName containsString:@"/"]) {

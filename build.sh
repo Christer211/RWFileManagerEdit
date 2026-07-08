@@ -10,6 +10,7 @@ clang -dynamiclib \
   -arch arm64 \
   -isysroot "$SDK" \
   -miphoneos-version-min=13.0 \
+  -fobjc-arc \          # ← ADD THIS LINE
   -o RWFileManager.dylib \
   RWFileManager.m
 
